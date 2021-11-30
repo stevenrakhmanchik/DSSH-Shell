@@ -1,11 +1,11 @@
 removeWhite	<- Function that removes excess whitespace from end of command
-readLine		<- Calls removeWhite function and then takes in stdin input
+readLine	<- Calls removeWhite function and then takes in stdin input
 parser		<- parses input from command line
 checkRedir	<- checks if redirection takes place and returns true or false as 0 or 1
 checkPipe	<- similar to checkRedir but works with pipes
 parseRedir	<- parses command for redirection
 parsePipe	<- parses command for pipe
-runChild		<- runs command as a child of the main process
+runChild	<- runs command as a child of the main process
 writeFromFile	<- takes input from file for redirection
 writeToFile	<- sends output to file from redirection
 appendToFile	<- adds output to a file from redirection
