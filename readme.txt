@@ -23,12 +23,12 @@ main		<- contains main shell loop that displays the prompt
 
 BUGS:
 
-	-> ANSI escape codes show up when attempting to use arrow keys
-	-> In some environments, such as Hyper Terminal on Mac, the backspace key doesn't work and also leaves an escape code in the input. Backspace does work on the regular terminal app on Mac, but arrow keys still do not.
+-> ANSI escape codes show up when attempting to use arrow keys
+-> In some environments, such as Hyper Terminal on Mac, the backspace key doesn't work and also leaves an escape code in the input. Backspace does work on the regular terminal app on Mac, but arrow keys still do not.
 
 Attempted to implement:
 
-	-> Attempted to add multiple command support with the ; operator but was unable to because of the argument limit I set previously to avoid memory issues.
+	-> Attempted to add multiple command support with the ; operator but was unable to because of 	the argument limit I set previously to avoid memory issues.
 
 Successfully added:
 
