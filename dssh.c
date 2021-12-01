@@ -1,35 +1,19 @@
 /***
- *           ____  _____ _____  __  __   _____  __           __ __   
- *          / __ \/ ___// ___/ / / / /  / ___/ / /_   ___   / // /   
- *         / / / /\__ \ \__ \ / /_/ /   \__ \ / __ \ / _ \ / // /    
- *        / /_/ /___/ /___/ // __  /   ___/ // / / //  __// // /     
- *       /_____//____//____//_/ /_/   /____//_/ /_/ \___//_//_/      
- *                                                                   
+ *           ____  _____ _____  __  __   _____  __           __ __
+ *          / __ \/ ___// ___/ / / / /  / ___/ / /_   ___   / // /
+ *         / / / /\__ \ \__ \ / /_/ /   \__ \ / __ \ / _ \ / // /
+ *        / /_/ /___/ /___/ // __  /   ___/ // / / //  __// // /
+ *       /_____//____//____//_/ /_/   /____//_/ /_/ \___//_//_/
+ *
  */
 //Steven Rakhmanchik and Derrick Lin - November 2021
-#include <stdio.h>  
-#include <string.h> 
-#include <stdlib.h> 
-#include <unistd.h> 
-#include <sys/types.h>
-#include <sys/wait.h> 
-#include <sys/stat.h>
-#include <fcntl.h> 
-#include <time.h>
-#include <dirent.h>
-#include <ftw.h>
-#include <limits.h>
+#include <string.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <unistd.h>
+#include <fcntl.h>
 #include <errno.h>
 #include<sys/utsname.h>
-#include <stdbool.h>
-#include <termios.h>
-
-#define MAX_LINE_LENGTH 1024
-#define BUFFER_SIZE 64
-#define REDIR_SIZE 2
-#define PIPE_SIZE 3
-#define MAX_HISTORY_SIZE 128
-#define MAX_COMMAND_NAME_LENGTH 128
 
 #ifndef MAX_BUF
 #define MAX_BUF 200
@@ -44,37 +28,325 @@
 #define KCYN  "\x1B[36m"
 #define KWHT  "\x1B[37m"
 
-#define PROMPT_FORMAT "%F %T "
-#define PROMPT_MAX_LENGTH 30
-
 #ifdef _WIN32{
     printf("%sDSSH %s| %sYou are on windows. This will not work.", KCYN, KWHT, KRED);
 		exit();
 #endif
 
-#define TOFILE_DIRECT ">"
-#define APPEND_TOFILE_DIRECT ">>"
-#define FROMFILE "<"
-#define PIPE_OPT "|"
+int batchMode=0;
 
-int running = 1;
+int breakCommand(char *str)
+{
+       char *tmp;
+       char *subcmds[1000];
+       char buffer[1000];
+       strcpy(buffer, str);
+       tmp = strtok(buffer," \n\t");
+       int num_subcmds = 0;
+       int out, flag1=0;
+       char *subnew[1000];
 
-int unlink_cb(const char *fpath, const struct stat *sb, int typeflag, struct FTW *ftwbuf) {
-	int rv = remove(fpath);
+       while (tmp)
+       {
+          subcmds[num_subcmds] = tmp;
+          num_subcmds++;
+          tmp = strtok(NULL," \n\t");
+       }
 
-	if (rv)
-		perror(fpath);
+       int j, loc=0;
+       for (j = 0; j < num_subcmds; j++) {}
 
-	return rv;
+       subcmds[j] = NULL;
+
+       if(num_subcmds > 1)
+	 {
+	   for (j = 0; j < num_subcmds; j++)
+	     {
+	       if(strcmp(subcmds[j], ">") == 0)
+		 {
+		   loc=j;
+		   flag1=1;
+		   break;
+		 }
+	     }
+
+	   if(flag1==1)
+	     {
+	       for (j = 0; j < loc; j++)
+		 {
+		   subnew[j]=subcmds[j];
+		 }
+	     }
+
+	   subnew[loc]=NULL;
+	 }
+
+       int i, savedJ, flag2 = 0;
+
+       if(flag1!=1)
+	   for (j = 0; j < num_subcmds; j++)
+	     {
+	       i = strlen(subcmds[j]) - 1;
+	       if(subcmds[j][i]=='>')
+		 {
+		   subcmds[j][i]='\0';
+		   flag2 = 1;
+		   savedJ=j;
+		 }
+	     }
+
+       if(flag2==1)
+	 {
+	   for (j = 0; j <= savedJ; j++)
+	     {
+	       subnew[j]=subcmds[j];
+	     }
+	   subnew[savedJ+1]=NULL;
+	 }
+
+       if(flag1==1)
+	 {
+	   close(STDOUT_FILENO);
+	   out = open(subcmds[loc+1], O_RDWR | O_CREAT , 0666 );
+	   if(out < 0)
+	     {
+	       char error_message[30] = "An error has occurred\n";
+	       write(STDERR_FILENO, error_message, strlen(error_message));
+	       exit(0);
+	     }
+	   dup2(out, STDOUT_FILENO);
+	   if(execvp(subnew[0], subnew) < 0)
+	     {
+	       char error_message[30] = "An error has occurred\n";
+	       write(STDERR_FILENO, error_message, strlen(error_message));
+	       exit(101);
+	     }
+	   close(out);
+	   return 101;
+	 }
+       else if(flag2==1)
+	 {
+	   close(STDOUT_FILENO);
+	   out = open(subcmds[savedJ+1], O_RDWR | O_CREAT , 0666 );
+	   if(out < 0)
+	     {
+	       char error_message[30] = "An error has occurred\n";
+	       write(STDERR_FILENO, error_message, strlen(error_message));
+	       exit(0);
+	     }
+	   dup2(out, STDOUT_FILENO);
+	   if(execvp(subnew[0], subnew) < 0)
+	     {
+	       char error_message[30] = "An error has occurred\n";
+	       write(STDERR_FILENO, error_message, strlen(error_message));
+	       exit(101);
+	     }
+	   close(out);
+	   return 101;
+	 }
+	 else if(strcmp(subcmds[0], "help") == 0)
+   {
+   printf("DSHH Help Information:\n");
+   printf("help        <- Displays help menu with all built-in commands\n");
+   printf("cd          <- Changes directory\n");
+   printf("exit        <- Exits DSSH shell\n");
+   }
+	 else if(strcmp(subcmds[0], "cd") == 0)
+	 {
+	   int res;
+	   if(subcmds[1]!=NULL)
+	     {
+	       res = chdir(subcmds[1]);
+	     }
+	   else
+	     {
+	       res = chdir(getenv("HOME"));
+	     }
+
+	   if(res == -1)
+	     {
+	       char error_message[30] = "An error has occurred\n";
+	       write(STDERR_FILENO, error_message, strlen(error_message));
+	     }
+	 }
+       else if(strcmp(subcmds[0], "exit") == 0) { exit(0);}
+       else if(strcmp(subcmds[0], "pwd") == 0)
+	 {
+	   if(subcmds[1]!=NULL)
+	     {
+	       char error_message[30] = "An error has occurred\n";
+	       write(STDERR_FILENO, error_message, strlen(error_message));
+	       exit(0);
+	     }
+	   else if (execvp(subcmds[0], subcmds) < 0)
+	     {
+	       char error_message[30] = "An error has occurred\n";
+	       write(STDERR_FILENO, error_message, strlen(error_message));
+	       exit(101);
+	     }
+	 }
+       else if (execvp(subcmds[0], subcmds) < 0)
+	 {
+	   char error_message[30] = "An error has occurred\n";
+	   write(STDERR_FILENO, error_message, strlen(error_message));
+	   return 1;
+	 }
+       return 1;
 }
 
-int unlink_cb_verb(const char *fpath, const struct stat *sb, int typeflag, struct FTW *ftwbuf) {
-	int rv = remove(fpath);
-	if (rv)
-		perror(fpath);
-	else	printf("%s\n", fpath);
-	return rv;
- }
+int breakString(char *str) {
+       char *tmp;
+       char *subcmds[1000];
+       char buffer[1000];
+       strcpy(buffer, str);
+       tmp = strtok(buffer,";");
+       int num_subcmds = 0;
+
+       while (tmp)
+       {
+          subcmds[num_subcmds] = tmp;
+          num_subcmds++;
+          tmp = strtok(NULL,";");
+       }
+       int j, status;
+
+       for (j = 0; j < num_subcmds; j++)
+       {
+	 int ret;
+		if((subcmds[j][0]=='c' && subcmds[j][1]=='d') == 1)
+	   {
+	     breakCommand(subcmds[j]);
+	   }
+	 else if(strcmp(subcmds[j],"exit") == 0)
+	   {
+	     breakCommand(subcmds[j]);
+	   }
+	 else
+	   {
+	     if( (ret=fork()) > 0 )
+	       {
+		 waitpid(ret,&status,WUNTRACED);
+		 int x = WEXITSTATUS(status);
+		 if(x==101)
+		   return 101;
+	       }
+	     else if ( ret == 0 )
+			{
+		 if(breakCommand(subcmds[j])==1)
+		   {
+		     exit(1);
+		     return 101;
+		   }
+		 else return 0;
+		 break;
+	       }
+	     else
+	       {
+		 char error_message[30] = "An error has occurred\n";
+		 write(STDERR_FILENO, error_message, strlen(error_message));
+		 exit(101);
+	       }
+	   }
+       }
+}
+
+int showPrompt(void)
+{
+      char *cmds[100];
+      char buffer[100];
+      char * tmp;
+      int num_cmds, i, flag, rc=0;
+
+      while (!rc)
+      {
+          num_cmds = 0;
+          int getlogin_r(char *buf, size_t bufsize);
+          char path[MAX_BUF];
+          getcwd(path, MAX_BUF);
+          char hostname[1024];
+          char username[1024];
+          gethostname(hostname, 1024);
+          getlogin_r(username, 1024);
+
+          char* promptText;
+          asprintf(&promptText, "%s%s@%s %s%s %s$ ", KGRN, username, hostname, KCYN, path, KWHT);
+
+          printf(promptText); fgets(buffer, 512, stdin);
+
+	  for(i=0; buffer[i]!='\0'; i++) {
+	    if(buffer[i]=='+')
+	      flag++;
+	  }
+
+	  int j = i-2;
+	  int endingWithPlus = 0;
+	  for(; j >= 0; j--)
+	  {
+	    if(buffer[j] == ' ')
+	      continue;
+	    else if(buffer[j] == '+')
+	      {
+		endingWithPlus = 1;
+		break;
+	      }
+	    else
+	      break;
+	  }
+          tmp = strtok(buffer,"+");
+
+          while (tmp)
+          {
+              cmds[num_cmds] = tmp;
+              num_cmds++;
+              tmp = strtok(NULL,"+");
+          }
+
+	  int numCmndsToFork = num_cmds;
+
+	  if(flag==0)
+	  {
+	    if((rc=breakString(buffer))==101) {
+	      break;
+	      exit(1);
+	    }
+	  }
+	  else
+	    {
+
+	      if(endingWithPlus == 0)
+	      {
+		  numCmndsToFork = num_cmds - 1;
+		   if((rc=breakString(cmds[num_cmds-1]))==101)
+		   {
+		     break; exit(1);
+		   }
+	      }
+
+	      int i;
+	      for (i = 0; i < numCmndsToFork; i++)
+		{
+		  int ret;
+		  if( (ret=fork()) > 0 )
+		    {
+		    }
+		  else if ( ret == 0 )
+		    {
+		      if(breakString(cmds[i])==101)
+			{
+			  exit(0);
+			}
+		      break;
+		    }
+		  else
+		    {
+		      char error_message[30] = "An error has occurred\n";
+		      write(STDERR_FILENO, error_message, strlen(error_message));
+		    }
+		}
+	    }
+      }
+      return 0;
+}
 
 void runShell() {
   system("clear");
@@ -84,483 +356,172 @@ void runShell() {
     printf("%sDSSH Shell %sBy %sSteven Rakhmanchik %sand %sDerrick Lin\n\n", KCYN, KWHT, KCYN, KWHT, KCYN);
 }
 
-char *get_current_dir() {
-    char cwd[FILENAME_MAX];
-    char*result = getcwd(cwd, sizeof(cwd));
-    return result;
-}
+int main(int argc, char *argv[])
+{
+      runShell();
+      char *cmds[1000];
+      char buffer[1000]="test";
+      char * tmp;
+      int num_cmds, i, flag, rc=0;
+      char *fileToRead = "/no/such/file";
 
-char *prompt() {
-    static char *_prompt = NULL;
-    time_t now;
-    struct tm *tmp;
-    size_t size;
-
-    if (_prompt == NULL) {
-        _prompt = malloc(PROMPT_MAX_LENGTH * sizeof(char));
-        if (_prompt == NULL) {
-            printf("%sDSSH %s| %sMemory allocation error\n", KCYN, KWHT, KRED);
-            exit(EXIT_FAILURE);
-        }
-    }
-    char* username = getenv("USER");
-    strncat(_prompt, username, strlen(username));
-    return _prompt;
-}
-
-void removeWhite(char *line) {
-    int i = 0;
-    while (line[i] != '\n') {
-        i++;
-    }
-
-    line[i] = '\0';
-}
-
-void readLine(char *line) {
-    char *ret = fgets(line, MAX_LINE_LENGTH, stdin);
-
-    
-    removeWhite(line);
-
-    
-    if (strcmp(line, "exit") == 0 || ret == NULL || strcmp(line, "quit") == 0) {
-        exit(EXIT_SUCCESS);
-    }
-}
-
-void parser(char *input_string, char **argv, int *wait) {
-    int i = 0;
-
-    while (i < BUFFER_SIZE) {
-        argv[i] = NULL;
-        i++;
-    }
-
-    
-    *wait = (input_string[strlen(input_string) - 1] == '&') ? 0 : 1; 
-    input_string[strlen(input_string) - 1] = (*wait == 0) ? input_string[strlen(input_string) - 1] = '\0' : input_string[strlen(input_string) - 1];
-    i = 0;
-    argv[i] = strtok(input_string, " ");
-
-    if (argv[i] == NULL) return;
-
-    while (argv[i] != NULL) {
-        i++;
-        argv[i] = strtok(NULL, " ");
-    }
-
-    argv[i] = NULL;
-}
-
-int checkRedir(char **argv) {
-    int i = 0;
-    while (argv[i] != NULL) {
-        if (strcmp(argv[i], TOFILE_DIRECT) == 0 || strcmp(argv[i], APPEND_TOFILE_DIRECT) == 0 || strcmp(argv[i], FROMFILE) == 0) {
-            return i; 
-        }
-        i = -~i; 
-    }
-    return 0; 
-}
-
-int checkPipe(char **argv) {
-    int i = 0;
-    while (argv[i] != NULL) {
-        if (strcmp(argv[i], PIPE_OPT) == 0) {
-            return i; 
-        }
-        i = -~i; 
-    }
-    return 0; 
-}
-
-void parseRedir(char **argv, char **redirect_argv, int redirect_index) {
-    redirect_argv[0] = strdup(argv[redirect_index]);
-    redirect_argv[1] = strdup(argv[redirect_index + 1]);
-    argv[redirect_index] = NULL;
-    argv[redirect_index + 1] = NULL;
-}
-
-void parsePipe(char **argv, char **child01_argv, char **child02_argv, int pipe_index) {
-    int i = 0;
-    for (i = 0; i < pipe_index; i++) {
-        child01_argv[i] = strdup(argv[i]);
-    }
-    child01_argv[i++] = NULL;
-
-    while (argv[i] != NULL) {
-        child02_argv[i - pipe_index - 1] = strdup(argv[i]);
-        i++;
-    }
-    child02_argv[i - pipe_index - 1] = NULL;
-}
-
-void runChild(char **argv) {
-    if (execvp(argv[0], argv) < 0) {
-        printf("%sDSSH %s| %sError while executing command\n", KCYN, KWHT, KRED);
-        exit(EXIT_FAILURE);
-    }
-}
-
-void writeFromFile(char **argv, char **dir) {
-    
-    int fd_in = open(dir[1], O_RDONLY);
-    if (fd_in == -1) {
-        printf("%sDSSH %s| %sError while redirecting input\n", KCYN, KWHT, KRED);
-        exit(EXIT_FAILURE);
-    }
-
-    dup2(fd_in, STDIN_FILENO);
-
-    if (close(fd_in) == -1) {
-        printf("%sDSSH %s| %sError while closing input\n", KCYN, KWHT, KRED);
-        exit(EXIT_FAILURE);
-    }
-    runChild(argv);
-}
-
-void writeToFile(char **argv, char **dir) {
-    
-
-    int fd_out;
-    fd_out = creat(dir[1], S_IRWXU);
-    if (fd_out == -1) {
-        printf("%sDSSH %s| %sError while redirecting output\n", KCYN, KWHT, KRED);
-        exit(EXIT_FAILURE);
-    }
-    dup2(fd_out, STDOUT_FILENO);
-    if (close(fd_out) == -1) {
-        printf("%sDSSH %s| %sError while closing output\n", KCYN, KWHT, KRED);
-        exit(EXIT_FAILURE);
-    }
-
-    runChild(argv);
-}
-
-void appendToFile(char **argv, char **dir) {
-    
-    int fd_out;
-    if (access(dir[0], F_OK) != -1) {
-        fd_out = open(dir[0], O_WRONLY | O_APPEND);
-    }
-    if (fd_out == -1) {
-        printf("%sDSSH %s| %sError while redirecting output\n", KCYN, KWHT, KRED);
-        exit(EXIT_FAILURE);
-    }
-    dup2(fd_out, STDOUT_FILENO);
-    if (close(fd_out) == -1) {
-        printf("%sDSSH %s| %sError while closing output\n", KCYN, KWHT, KRED);
-        exit(EXIT_FAILURE);
-    }
-    runChild(argv);
-}
-
-void runPipe(char **argv_in, char **argv_out) {
-    int fd[2];
-    
-    if (pipe(fd) == -1) {
-        printf("%sDSSH %s| %sError while piping\n", KCYN, KWHT, KRED);
-        exit(EXIT_FAILURE);
-    }
-
-    if (fork() == 0) {
-        dup2(fd[1], STDOUT_FILENO);
-        close(fd[0]);
-        close(fd[1]);
-        runChild(argv_in);
-        exit(EXIT_SUCCESS);
-    }  
-    if (fork() == 0) {
-        dup2(fd[0], STDIN_FILENO);
-        close(fd[1]);
-        close(fd[0]);
-        runChild(argv_out);
-        exit(EXIT_SUCCESS);
-    }
-
-    close(fd[0]);
-    close(fd[1]);
-    wait(0);
-    wait(0);
-}
-
-void runParent(pid_t child_pid, int *bg) {}
-
-void histAdd(char *history, char *line) {
-    strcpy(history, line);
-}
-
-char *histGet(char *history) {
-    if (history[0] == '\0') {
-        printf("%sDSSH %s| %sNo Commands in history\n", KCYN, KWHT, KRED);
-        return NULL;
-    }
-    return history;
-}
-
-int cdCommand(char **args);
-int shellHelp(char **args);
-int shellExit(char **args);
-void runCommand(char **args, char **redir_argv, int wait, int res);
-
-
-char *builtin_str[] = {
-    "cd",
-    "help",
-    "exit",
-    "listdir",
-    "rmv",
-    "exrmv"};
-
-int shellLs(char **args) {
-	struct dirent **namelist;
-	int n = scandir(".", &namelist, NULL, alphasort);
-	if(n < 0)
+      if(argc>2)
 	{
-		perror("sh");
+	  char error_message[30] = "An error has occurred\n";
+	  write(STDERR_FILENO, error_message, strlen(error_message));
+	  exit(1);
 	}
-	else
+      else if(argc==2)
 	{
-		int i;
-		i = 0;
-		while (n--)
+	  batchMode = 1;
+	  fileToRead = argv[1];
+	}
+
+      FILE *new;
+      FILE *fp;
+
+      if(batchMode==1)
+	{
+	  fp = fopen(fileToRead,"r");
+	  if (fp==NULL)
+	    {
+	      char error_message[30] = "An error has occurred\n";
+	      write(STDERR_FILENO, error_message, strlen(error_message));
+	      exit(1);
+	    }
+	  new=fp;
+	}
+      else
+	new=stdin;
+
+      while (!feof(new))
+      {
+          num_cmds = 0;
+
+          int getlogin_r(char *buf, size_t bufsize);
+          char path[MAX_BUF];
+          getcwd(path, MAX_BUF);
+          char hostname[1024];
+          char username[1024];
+          gethostname(hostname, 1024);
+          getlogin_r(username, 1024);
+
+          char* promptText;
+          asprintf(&promptText, "%s%s@%s %s%s %s$ ", KGRN, username, hostname, KCYN, path, KWHT);
+          if(batchMode==0) write(STDOUT_FILENO, promptText, strlen(promptText));
+          free(promptText);
+	  if(batchMode==1)
+	      fgets(buffer, 1000, fp);
+	  else
+	      fgets(buffer, 1000, stdin);
+
+	  int j;
+
+	  strtok(buffer, "\n\r");
+
+	  if(batchMode == 1 && strcmp(buffer,"xyz")!=0)
+	    {
+		  write(STDOUT_FILENO, buffer, strlen(buffer));
+		  write(STDOUT_FILENO, "\n", strlen("\n"));
+		  if(strcmp(buffer,"+")==0)
+		    {
+		      exit(0);
+		    }
+	    }
+
+	  if(strcmp(buffer,"xyz")==0) exit(0);
+
+	  for(i=0; buffer[i]!='\0'; i++) {
+	    if(buffer[i]=='+')
+	      flag++;
+	  }
+
+	  if(strlen(buffer)==0)
+	    {
+	      char error_message[30] = "An error has occurred\n";
+	      write(STDERR_FILENO, error_message, strlen(error_message));
+	    }
+
+	  j = i-2;
+	  int endingWithPlus = 0;
+	  for(; j >= 0; j--)
+	  {
+	    if(buffer[j] == ' ')
+	      continue;
+	    else if(buffer[j] == '+')
+	      {
+		endingWithPlus = 1;
+		break;
+	      }
+	    else
+	      break;
+	  }
+          tmp = strtok(buffer,"+");
+
+          while (tmp)
+          {
+              cmds[num_cmds] = tmp;
+              num_cmds++;
+              tmp = strtok(NULL,"+");
+          }
+
+	  int numCmndsToFork = num_cmds;
+
+	  if(flag==0)
+	  {
+	    if((rc=breakString(buffer))==101) {
+	      break; exit(0);
+	    }
+	  }
+	  else
+	    {
+
+	      if(endingWithPlus == 0)
+	      {
+		  numCmndsToFork = num_cmds - 1;
+		   if((rc=breakString(cmds[num_cmds-1]))==101)
+		   {
+		     break;
+		     exit(0);
+		   }
+	      }
+
+	      int i, status;
+	      for (i = numCmndsToFork-1; i >= 0; i--)
 		{
-			i++;
-			printf("%s\n", namelist[n]->d_name);
-			free(namelist[n]);
-		}
-		free(namelist);
-	}
-	return 1;
-}
+		  int ret;
+		  if( (ret=fork()) > 0 )
+		    {
+		      while (1) {
+			int status;
+			pid_t done = waitpid(ret,&status,WUNTRACED);
+			if (done == -1) {
+			  if (errno == ECHILD) break;
+			} else {
+			  int x = WEXITSTATUS(status);
 
-int shellRemove(char **args) {
-	int argc = 1;
-	bool RECURSIVE_FLAG = false,
-		VERBOSE_FLAG = false,
-		FORCE_FLAG = false;
-	char filename[2048] = "";
-
-	while(args[argc] != NULL)
-	{
-		if (strcmp(args[argc], "-r") == 0) {
-			RECURSIVE_FLAG = true;
-		} else if (strcmp(args[argc], "-f") == 0) {
-			FORCE_FLAG = true;
-		} else if (strcmp(args[argc], "-v") == 0) {
-			VERBOSE_FLAG = true;
-		} else {
-			if (args[argc][0] != '/') {
-				getcwd(filename, sizeof(filename));
-				strcat(filename, "/");
+			  if (!WIFEXITED(x) || WEXITSTATUS(x) != 101) {
+			    exit(0);
+			  }
 			}
-			strcat(filename, args[argc]);
-		}
-		argc++;
-	}
-
-	if (filename == NULL) {
-		printf("%sDSSH %s| %sExpected a file name for rm", KCYN, KWHT, KRED);
-	} else if (!RECURSIVE_FLAG) {
-		if (unlink(filename) != 0) {
-			perror("DSSH");
-			return 1;
-		}
-		if (VERBOSE_FLAG)	printf("%s\n", filename);
-	} else {
-		if(VERBOSE_FLAG)	nftw(filename, unlink_cb_verb, 64, FTW_DEPTH | FTW_PHYS);
-		else	nftw(filename, unlink_cb, 64, FTW_DEPTH | FTW_PHYS);
-	}
-	return 1;
-}
-
-int shellExRemove(char **args) {
-	int j, i = 0, flag = 0;
-
-	while(args[i] != NULL)	i++;
-
-	DIR *d;
-	struct dirent *dir;
-
-	d = opendir(".");
-	if (d) {
-		while ((dir = readdir(d)) != NULL) {
-
-			if (strcmp(dir->d_name, ".") == 0 || strcmp(dir->d_name, "..") == 0) {
-				continue;
+		      }
+		    }
+		  else if ( ret == 0 )
+		    {
+		      if(breakString(cmds[i])==101)
+			{
+			  exit(0);
 			}
-
-			for(j = 1; j < i; j++) {
-				if( strcmp(args[j], dir->d_name) == 0 ) {
-					flag = 0;
-					break;
-				} else {
-					flag = 1;
-				}
-			}
-
-			if (flag == 1) {
-				char filename[2048] = "";
-				getcwd(filename, sizeof(filename));
-				strcat(filename, "/");
-				strcat(filename, dir->d_name);
-				if (unlink(filename) != 0) {
-					perror("DSSH");
-				}
-				printf("%s\n", filename);
-			}
+		    }
+		  else
+		    {
+		      char error_message[30] = "An error has occurred\n";
+		      write(STDERR_FILENO, error_message, strlen(error_message));
+		      exit(0);
+		    }
 		}
-
-		closedir(d);
-	}
-	return 1;
-}
-
-int (*builtin_func[])(char **) = {
-    &cdCommand,
-    &shellHelp,
-    &shellExit,
-    &shellLs,
-    &shellRemove,
-    &shellExRemove
-};
-
-int builtIn() {
-    return sizeof(builtin_str) / sizeof(char *);
-}
-
-int cdCommand(char **argv) {
-    if (argv[1] == NULL) {
-        printf("%sDSSH %s| %sArgument for command cd expected\n", KCYN, KWHT, KRED);
-    } else {
-        
-        if (chdir(argv[1]) != 0) {
-            printf("%sDSSH %s| %sError while changing directory to PATH\n", KCYN, KWHT, KRED);
-        }
-    }
-    return 1;
-}
-
-int shellHelp(char **argv) {
-    if (strcmp(argv[0], "help") == 0 && argv[1] == NULL) {
-        printf("DSHH Help Information:\n");
-	    printf("help        <- Displays help menu with all built-in commands\n");
-	    printf("cd          <- Changes directory\n");
-	    printf("listdir     <- Prints files in current directory\n");
-	    printf("rmv         <- Removes directory, or file\n");
-	    printf("exrmv       <- Removes all files except those specified\n");
-	    printf("exit        <- Exits DSSH shell\n");
-        return 0;
-    }
-    return 0;
-}
-
-int shellExit(char **args) {
-    running = 0;
-    return running;
-}
-int shellHistory(char *history, char **redir_args) {
-    char *cur_args[BUFFER_SIZE];
-    char cur_command[MAX_LINE_LENGTH];
-    int t_wait;
-
-    if (history[0] == '\0') {
-        printf("%sDSSH %s| %sNo commands in history\n", KCYN, KWHT, KRED);
-        return 1;
-    }
-    strcpy(cur_command, history);
-    printf("%s\n", cur_command);
-    parser(cur_command, cur_args, &t_wait);
-    int res = 0;
-    runCommand(cur_args, redir_args, t_wait, res);
-    return res;
-}
-int shellRedirect(char **args, char **redir_argv) {
-    
-    int redir_op_index = checkRedir(args);
-    
-    if (redir_op_index != 0) {
-        parseRedir(args, redir_argv, redir_op_index);
-        if (strcmp(redir_argv[0], ">") == 0) {
-            writeToFile(args, redir_argv);
-        } else if (strcmp(redir_argv[0], "<") == 0) {
-            writeFromFile(args, redir_argv);
-        } else if (strcmp(redir_argv[0], ">>") == 0) {
-            appendToFile(args, redir_argv);
-        }
-        return 1;
-    }
-    return 0;
-}
-int shellPipe(char **args) {
-    int pipe_op_index = checkPipe(args);
-    if (pipe_op_index != 0) {
-        
-        char *child01_arg[PIPE_SIZE];
-        char *child02_arg[PIPE_SIZE];
-        parsePipe(args, child01_arg, child02_arg, pipe_op_index);
-        runPipe(child01_arg, child02_arg);
-        return 1;
-    }
-    return 0;
-}
-void runCommand(char **args, char **redir_argv, int wait, int res) {
-    
-    for (int i = 0; i < builtIn(); i++) {
-        if (strcmp(args[0], builtin_str[i]) == 0) {
-            (*builtin_func[i])(args);
-            res = 1;
-        }
-    }
-    if (res == 0) {
-        int status; 
-        pid_t pid = fork();
-        if (pid == 0) { 
-            if (res == 0) res = shellRedirect(args, redir_argv);
-            if (res == 0) res = shellPipe(args);
-            if (res == 0) execvp(args[0], args);
-            exit(EXIT_SUCCESS);
-        } else if (pid < 0) { 
-            printf("%sDSSH %s| %sEcountered error while forking\n", KCYN, KWHT, KRED);
-            exit(EXIT_FAILURE);
-        } else { 
-            if (wait == 1) {
-                waitpid(pid, &status, WUNTRACED); 
-            }
-        }
-    }
-}
-
-int main(void) {
-    char *args[BUFFER_SIZE];
-    char line[MAX_LINE_LENGTH];
-    char t_line[MAX_LINE_LENGTH];
-    char history[MAX_LINE_LENGTH] = "No commands in history";
-    char *redir_argv[REDIR_SIZE];
-    int wait;
-    runShell();
-    int res = 0;
-    while (running) {
-        int getlogin_r(char *buf, size_t bufsize);
-        char path[MAX_BUF];
-        getcwd(path, MAX_BUF);
-        char hostname[1024];
-        char username[1024];
-        gethostname(hostname, 1024);
-        getlogin_r(username, 1024);
-        printf("%s%s@%s %s%s %s$ ", KGRN, username, hostname, KCYN, path, KWHT);
-        fflush(stdout);
-        readLine(line);
-        strcpy(t_line, line);
-        parser(line, args, &wait);
-        if (strcmp(args[0], "!!") == 0) {
-            res = shellHistory(history, redir_argv);
-        } else {
-            histAdd(history, t_line);
-            runCommand(args, redir_argv, wait, res);
-        }
-        res = 0;
-    }
-    return 0;
+	    }
+	  strcpy(buffer,"xyz");
+      }
+      return 0;
 }
